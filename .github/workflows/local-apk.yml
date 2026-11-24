@@ -11,6 +11,11 @@ name: Local Debian APK
 on:
   workflow_dispatch:
     inputs:
+      ref:
+        description: 'Branch or tag to build'
+        type: string
+        required: true
+        default: integration/debian-local
       publish:
         description: 'Publish the APK to a GitHub Release'
         type: boolean
@@ -33,6 +38,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || github.ref }}
 
       - uses: actions/setup-java@v5
         with:
