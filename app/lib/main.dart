@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'boot.dart';
-import 'data/services/local_pty_platform.dart';
+import 'data/services/local_pty_bridge.dart';
 import 'ui/support/error_view.dart';
 
 Future<void> main() async {
