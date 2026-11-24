@@ -4,43 +4,44 @@ import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 
-import 'local_pty_platform.dart' show localControlName, localEventName, localMethodName;
+import 'local_pty_platform.dart' show localEventName, localMethodName;
 
 /// Main-isolate side of the local PTY.
 ///
 /// Platform channels belong to the root isolate, while `LocalTransport` runs
-/// in a worker. This bridge is the only place that touches both: it forwards
-/// raw byte arrays between them and never parses ANSI or herdr JSON.
+/// in a worker. The worker's ports are handed over through the transport's
+/// `config` (see `createLocalTransport`), so no isolate-name registry is
+/// needed and this class never runs off the main isolate.
 class LocalPtyBridge {
-  LocalPtyBridge._();
-
-  static final instance = LocalPtyBridge._();
-
-  final _control = ReceivePort();
-  final _listeners = <SendPort>{};
-  final _method = const MethodChannel(localMethodName);
-  var _started = false;
-
-  /// Called once from `main()` after the binding is ready.
-  void init() {
-    if (_started) return;
-    _started = true;
-    IsolateNameServer.registerPortWithName(_control.sendPort, localControlName);
+  LocalPtyBridge() {
     _control.listen((Object? raw) => _onControl(raw! as List<Object?>));
     const EventChannel(localEventName).receiveBroadcastStream().listen(
       (Object? data) {
         if (data is Uint8List) {
-          for (final port in _listeners) port.send(['bytes', data]);
+          for (final port in _listeners) {
+            port.send(['bytes', data]);
+          }
         }
       },
       onError: (Object error, StackTrace stack) {
-        for (final port in _listeners) port.send(['error', error.toString()]);
+        for (final port in _listeners) {
+          port.send(['error', error.toString()]);
+        }
       },
       onDone: () {
-        for (final port in _listeners) port.send(['done']);
+        for (final port in _listeners) {
+          port.send(['done']);
+        }
       },
     );
   }
+
+  /// Passed to the worker through `IsolateTransport.config`.
+  SendPort get control => _control.sendPort;
+
+  final _control = ReceivePort();
+  final _listeners = <SendPort>{};
+  final _method = const MethodChannel(localMethodName);
 
   Future<void> _onControl(List<Object?> message) async {
     SendPort? reply;
@@ -65,5 +66,9 @@ class LocalPtyBridge {
       // hung connection instead of a failed call.
       reply?.send([id, 'err', error.toString()]);
     }
+  }
+
+  Future<void> dispose() async {
+    await _control.close();
   }
 }

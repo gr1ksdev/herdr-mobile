@@ -8,7 +8,7 @@ import 'package:herdr_mobile/data/services/herdr_transport.dart';
 import 'package:herdr_mobile/data/services/local_transport.dart';
 
 class _FakePty implements LocalPtyPlatform {
-  final output = StreamController<Uint8List>();
+  final ptyOutput = StreamController<Uint8List>();
   final written = <List<int>>[];
   var prepared = 0;
   var started = 0;
@@ -26,7 +26,7 @@ class _FakePty implements LocalPtyPlatform {
   }
 
   @override
-  Stream<Uint8List> output(String paneId) => output.stream;
+  Stream<Uint8List> output(String paneId) => ptyOutput.stream;
 
   @override
   Future<void> write(String paneId, List<int> bytes) async {
@@ -57,7 +57,7 @@ void main() {
 
   tearDown(() async {
     await transport.close();
-    await pty.output.close();
+    await pty.ptyOutput.close();
   });
 
   test('ping answers without starting the runtime', () async {
@@ -83,7 +83,7 @@ void main() {
     final small = LocalTransport(pty, maxLines: 3);
     await small.request('session.snapshot');
     for (final line in ['one', '\x1b[31mred\x1b[0m', 'three', 'four']) {
-      pty.output.add(_bytes('$line\n'));
+      pty.ptyOutput.add(_bytes('$line\n'));
       await _flush();
     }
 
@@ -99,7 +99,7 @@ void main() {
 
   test('plain reads strip ANSI for previews and answer guards', () async {
     await transport.request('session.snapshot');
-    pty.output.add(_bytes('\x1b[31mred\x1b[0m\n'));
+    pty.ptyOutput.add(_bytes('\x1b[31mred\x1b[0m\n'));
     await _flush();
     final read = (await transport.request('pane.read', {'strip_ansi': true}))['read'] as Map<String, dynamic>;
     expect(read['text'], 'red\n');
@@ -116,7 +116,7 @@ void main() {
     addTearDown(sub.cancel);
     await _flush();
 
-    pty.output.add(_bytes('quiet\n'));
+    pty.ptyOutput.add(_bytes('quiet\n'));
     await _flush();
     expect(seen.length, 1); // only the subscription ack
     expect(seen.single['event'], subscriptionStartedEvent);
@@ -158,7 +158,7 @@ void main() {
 
     expect(seen.single, containsPair('event', subscriptionStartedEvent));
 
-    pty.output.add(_bytes('hello\n'));
+    pty.ptyOutput.add(_bytes('hello\n'));
     await _flush();
     expect(seen.last['event'], 'pane_updated');
     final pane = (seen.last['data'] as Map)['pane'] as Map<String, dynamic>;

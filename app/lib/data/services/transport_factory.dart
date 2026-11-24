@@ -1,3 +1,5 @@
+import 'dart:isolate';
+
 import '../models/machine_profile.dart';
 import 'herdr_transport.dart';
 import 'isolate_transport.dart';
@@ -73,19 +75,21 @@ HerdrTransport _buildSsh(Object? config, void Function(String) onPin, void Funct
 /// The phone's own Debian runtime. Same isolate boundary and the same
 /// `HerdrTransport` contract as SSH, so the board and the pane cannot tell
 /// where the shell lives. No host key, credentials or network are involved.
-HerdrTransport createLocalTransport() =>
-    IsolateTransport(builder: _buildLocal, config: () => null, onPin: (_) {}, supportsFiles: false);
+HerdrTransport createLocalTransport(SendPort control) =>
+    IsolateTransport(builder: _buildLocal, config: () => control, onPin: (_) {}, supportsFiles: false);
 
 HerdrTransport _buildLocal(Object? config, void Function(String) onPin, void Function(String) onNotice) =>
-    LocalTransport(MethodChannelLocalPty());
+    LocalTransport(MethodChannelLocalPty(config));
 
 /// The machine form's Test button and the app's connection factory must pick
-/// the same transport for a profile, including a phone-hosted one.
+/// the same transport for a profile, including a phone-hosted one. The bridge
+/// belongs to the main isolate; only its [SendPort] crosses into the worker.
 HerdrTransport createTransportFor(
   MachineProfile profile,
   MachineSecrets secrets,
   void Function(String fingerprint) onPinHostKey,
-  void Function(String banner) onNotice,
-) => profile.kind == MachineKind.local
-    ? createLocalTransport()
+  void Function(String banner) onNotice, {
+  required SendPort localControl,
+}) => profile.kind == MachineKind.local
+    ? createLocalTransport(localControl)
     : createSshTransport(profile, secrets, onPinHostKey, onNotice);

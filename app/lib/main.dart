@@ -3,14 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'boot.dart';
-import 'data/services/local_pty_bridge.dart';
 import 'ui/support/error_view.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Platform channels live here; the local transport's worker reaches them
-  // through this bridge. Safe before any machine connection is built.
-  LocalPtyBridge.instance.init();
   installErrorReporting();
   // The OFL asks the licence to travel with the font; read only when Settings >
   // About > Licences opens.

@@ -26,6 +26,7 @@ import 'data/repositories/slash_usage.dart';
 import 'data/repositories/observed_sessions.dart';
 import 'data/repositories/terminal_settings.dart';
 import 'data/services/herdr_api.dart';
+import 'data/services/local_pty_bridge.dart';
 import 'data/models/machine_profile.dart' show MachineKind;
 import 'data/repositories/host_inbox.dart' show InboxJanitor, PrefsInboxCleanupLog;
 import 'data/services/network_monitor.dart';
@@ -45,6 +46,15 @@ import 'ui/render/mermaid/md_diagram_opener.dart';
 import 'ui/shell/home_shell.dart';
 import 'ui/shell/home_pages.dart';
 
+/// Owns the platform channels for the phone's own shell. Created on the main
+/// isolate only when a local connection is first built; the worker gets its
+/// [SendPort], never the channel itself.
+LocalPtyBridge? _localBridge;
+
+/// Built only when a local connection is actually needed: a plain unit test
+/// that imports this file has no platform channels to listen to.
+LocalPtyBridge get _localBridge => _localBridge ??= LocalPtyBridge();
+
 /// How the app opens a connection to a saved machine: over SSH, with the
 /// credentials read from the keychain only when the transport starts.
 ConnectionFactory sshConnectionFactory({required MachineRepository machines, required SnapshotCache snapshotCache}) {
@@ -61,7 +71,7 @@ ConnectionFactory sshConnectionFactory({required MachineRepository machines, req
       cache: snapshotCache,
       api: HerdrApi(
         isLocal
-            ? createLocalTransport()
+            ? createLocalTransport(_localBridge.control)
             : createSshTransportLater(
                 // Asked at each worker start: a replaced worker gets the pin made since.
                 () => machines.byId(profile.id) ?? profile,
@@ -298,7 +308,10 @@ class _HerdrMobileAppState extends State<HerdrMobileApp> with WidgetsBindingObse
       if (widget.lastSeen case final seen?) Provider<LastSeen>.value(value: seen),
       Provider<PanePreviews>.value(value: _previews),
       if (widget.observedSessions case final observed?) ListenableProvider<ObservedSessions>.value(value: observed),
-      Provider<TransportFactory>.value(value: createTransportFor),
+      Provider<TransportFactory>.value(
+        value: (profile, secrets, onPin, onNotice) =>
+            createTransportFor(profile, secrets, onPin, onNotice, localControl: _localBridge.control),
+      ),
       if (widget.agentSessions case final sessions?) ListenableProvider<AgentSessions>.value(value: sessions),
       ChangeNotifierProvider.value(value: _attentionSet),
       if (widget.agentSessionSettings case final settings?) ChangeNotifierProvider.value(value: settings),

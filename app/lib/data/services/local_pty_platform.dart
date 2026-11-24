@@ -5,18 +5,20 @@ import 'dart:typed_data';
 import 'herdr_transport.dart';
 import 'local_transport.dart';
 
-/// Names shared with [LocalPtyBridge] in `local_pty_bridge.dart`. This file
-/// must stay free of Flutter imports: it is loaded inside the transport
-/// worker isolate, where platform channels do not exist.
-const localControlName = 'herdr.local.control';
+/// Names shared with `local_pty_bridge.dart`. This file must stay free of
+/// Flutter imports: it is loaded inside the transport worker isolate.
 const localMethodName = 'dev.herdrmobile/local-runtime';
 const localEventName = 'dev.herdrmobile/local-runtime/output';
 
 /// Worker-isolate side of the local PTY. Created by a top-level
 /// [TransportBuilder] so it can live behind [IsolateTransport].
+///
+/// [config] is the main isolate's control `SendPort`, handed over when the
+/// worker starts. Passing it this way avoids `IsolateNameServer`, which is not
+/// available in every isolate.
 class MethodChannelLocalPty implements LocalPtyPlatform {
-  MethodChannelLocalPty() {
-    final control = IsolateNameServer.lookupPortByName(localControlName);
+  MethodChannelLocalPty(Object? config) {
+    final control = config as SendPort?;
     if (control == null) {
       throw const HerdrTransportException('The local PTY bridge is not ready', fatal: true);
     }
@@ -132,7 +134,7 @@ class MethodChannelLocalPty implements LocalPtyPlatform {
     }
     _pending.clear();
     _outputController.close();
-    _output.closePort();
-    _replies.closePort();
+    _output.close();
+    _replies.close();
   }
 }
