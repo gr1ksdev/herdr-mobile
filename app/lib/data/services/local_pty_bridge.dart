@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:isolate';
-import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 
@@ -68,7 +67,7 @@ class LocalPtyBridge {
     }
   }
 
-  Future<void> dispose() async {
-    await _control.close();
+  void dispose() {
+    _control.close();
   }
 }

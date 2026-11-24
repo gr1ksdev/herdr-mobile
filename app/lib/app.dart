@@ -49,11 +49,11 @@ import 'ui/shell/home_pages.dart';
 /// Owns the platform channels for the phone's own shell. Created on the main
 /// isolate only when a local connection is first built; the worker gets its
 /// [SendPort], never the channel itself.
-LocalPtyBridge? _localBridge;
+LocalPtyBridge? _localBridgeInstance;
 
 /// Built only when a local connection is actually needed: a plain unit test
 /// that imports this file has no platform channels to listen to.
-LocalPtyBridge get _localBridge => _localBridge ??= LocalPtyBridge();
+LocalPtyBridge get _localBridge => _localBridgeInstance ??= LocalPtyBridge();
 
 /// How the app opens a connection to a saved machine: over SSH, with the
 /// credentials read from the keychain only when the transport starts.
