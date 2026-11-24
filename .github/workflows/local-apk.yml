@@ -69,7 +69,7 @@ jobs:
       - name: Collect assets
         run: |
           set -euo pipefail
-          apk="$(find app/build/app/outputs/flutter-apk -name '*release.apk' | sort | head -1)"
+          apk="$(find app/build/app/outputs/flutter-apk -name '*release.apk' -print -quit)"
           [ -n "$apk" ] || { echo 'No release APK was built'; exit 1; }
           version="$(sed -n 's/^version: \([0-9.+]*\)/\1/p' app/pubspec.yaml)"
           mkdir -p dist

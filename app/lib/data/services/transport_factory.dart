@@ -82,3 +82,14 @@ HerdrTransport createLocalTransport() => IsolateTransport(
 
 HerdrTransport _buildLocal(Object? config, void Function(String) onPin, void Function(String) onNotice) =>
     LocalTransport(MethodChannelLocalPty());
+
+/// The machine form's Test button and the app's connection factory must pick
+/// the same transport for a profile, including a phone-hosted one.
+HerdrTransport createTransportFor(
+  MachineProfile profile,
+  MachineSecrets secrets,
+  void Function(String fingerprint) onPinHostKey,
+  void Function(String banner) onNotice,
+) => profile.kind == MachineKind.local
+    ? createLocalTransport()
+    : createSshTransport(profile, secrets, onPinHostKey, onNotice);

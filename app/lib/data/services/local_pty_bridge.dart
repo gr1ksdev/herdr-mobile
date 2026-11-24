@@ -43,23 +43,27 @@ class LocalPtyBridge {
   }
 
   Future<void> _onControl(List<Object?> message) async {
-    switch (message[0]) {
-      case 'listen':
-        _listeners.add(message[1]! as SendPort);
-      case 'unlisten':
-        _listeners.remove(message[1]);
-      case 'call':
-        final reply = message[4]! as SendPort;
-        final id = message[1]!;
-        try {
+    SendPort? reply;
+    Object? id;
+    try {
+      switch (message[0]) {
+        case 'listen':
+          _listeners.add(message[1]! as SendPort);
+        case 'unlisten':
+          _listeners.remove(message[1]);
+        case 'call':
+          reply = message[4] as SendPort?;
+          id = message[1];
           final result = await _method.invokeMethod<Object?>(
             message[2]! as String,
             message[3] as Map<String, Object?>?,
           );
-          reply.send([id, 'ok', result]);
-        } on Object catch (error) {
-          reply.send([id, 'err', error.toString()]);
-        }
+          reply?.send([id, 'ok', result]);
+      }
+    } on Object catch (error) {
+      // Never leave the worker's completer pending: that would look like a
+      // hung connection instead of a failed call.
+      reply?.send([id, 'err', error.toString()]);
     }
   }
 }

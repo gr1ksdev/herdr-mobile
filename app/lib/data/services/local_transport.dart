@@ -59,10 +59,15 @@ class LocalTransport implements HerdrTransport {
   final String version;
   final int maxLines;
 
+  /// CSI sequences (colours, cursor moves). Stripped when the caller asks for
+  /// plain text, as pane previews and answer guards do.
+  static final _csi = RegExp(r'\x1B\[[0-?]*[ -/]*[@-~]');
+
   final List<String> _lines = [];
   final _events = StreamController<Map<String, dynamic>>.broadcast();
   StreamSubscription<String>? _output;
   Future<void>? _starting;
+  var _wantsPaneUpdates = false;
   var _closed = false;
 
   Future<void> _ensureStarted() {
@@ -96,10 +101,14 @@ class LocalTransport implements HerdrTransport {
     while (_lines.length > maxLines) {
       _lines.removeAt(0);
     }
-    _emit({
-      'event': 'pane_updated',
-      'data': {'pane': _pane()},
-    });
+    // The background profile asks only for status changes, not for output.
+    // Sending pane_updated anyway would wake the radio for every shell line.
+    if (_wantsPaneUpdates) {
+      _emit({
+        'event': 'pane_updated',
+        'data': {'pane': _pane()},
+      });
+    }
   }
 
   void _fail(Object error, Object? cause, StackTrace? trace) {
@@ -164,14 +173,13 @@ class LocalTransport implements HerdrTransport {
       case 'pane.read':
         await _ensureStarted();
         final wanted = (params['lines'] as num?)?.toInt();
-        final count = wanted == null ? _lines.length : wanted.clamp(0, _lines.length);
+        final count = wanted == null ? _lines.length : wanted.clamp(0, _lines.length).toInt();
         final from = _lines.length - count;
+        var text = _lines.skip(from).join('\n') + (from < _lines.length ? '\n' : '');
+        if (params['strip_ansi'] == true) text = text.replaceAll(_csi, '');
         return {
           'type': 'pane_read',
-          'read': {
-            'text': _lines.skip(from).join('\n') + (from < _lines.length ? '\n' : ''),
-            'truncated': from > 0,
-          },
+          'read': {'text': text, 'truncated': from > 0},
         };
 
       case 'pane.send_text':
@@ -240,6 +248,7 @@ class LocalTransport implements HerdrTransport {
   @override
   Stream<Map<String, dynamic>> events(List<Map<String, dynamic>> subscriptions) {
     if (_closed) return Stream.error(const HerdrTransportException('Local runtime closed', fatal: true));
+    _wantsPaneUpdates = subscriptions.any((s) => s['type'] == 'pane.updated' || s['type'] == 'pane_updated');
     final controller = StreamController<Map<String, dynamic>>();
     late final StreamSubscription<Map<String, dynamic>> inner;
     controller.onListen = () {

@@ -21,16 +21,35 @@ class MethodChannelLocalPty implements LocalPtyPlatform {
       throw const HerdrTransportException('The local PTY bridge is not ready', fatal: true);
     }
     _control = control;
+    // The shell prints its prompt as soon as it starts, which can be before
+    // LocalTransport subscribes. Replay what arrived in the meantime.
+    _outputController = StreamController<Uint8List>(onListen: () {
+      _outputListening = true;
+      for (final bytes in _buffer) {
+        _outputController.add(bytes);
+      }
+      _buffer.clear();
+      final error = _pendingError;
+      if (error != null) {
+        _pendingError = null;
+        _outputController.addError(error);
+      }
+      if (_pendingDone) _outputController.close();
+    });
     _replies.listen((Object? raw) => _onReply(raw! as List<Object?>));
     _output.listen((Object? raw) => _onOutput(raw! as List<Object?>));
     control.send(['listen', _output.sendPort]);
   }
 
   late final SendPort _control;
+  late final StreamController<Uint8List> _outputController;
   final _replies = ReceivePort();
   final _output = ReceivePort();
   final _pending = <Object, Completer<Object?>>{};
-  final _outputController = StreamController<Uint8List>.broadcast();
+  final _buffer = <Uint8List>[];
+  Object? _pendingError;
+  var _pendingDone = false;
+  var _outputListening = false;
   var _nextId = 0;
 
   void _onReply(List<Object?> message) {
@@ -44,15 +63,28 @@ class MethodChannelLocalPty implements LocalPtyPlatform {
   }
 
   void _onOutput(List<Object?> message) {
+    if (_outputController.isClosed) return;
     switch (message[0]) {
       case 'bytes':
-        if (!_outputController.isClosed) _outputController.add(message[1]! as Uint8List);
+        final bytes = message[1]! as Uint8List;
+        if (_outputListening) {
+          _outputController.add(bytes);
+        } else {
+          _buffer.add(bytes);
+        }
       case 'error':
-        if (!_outputController.isClosed) {
-          _outputController.addError(HerdrTransportException(message[1] as String? ?? 'Local PTY failed'));
+        final error = HerdrTransportException(message[1] as String? ?? 'Local PTY failed');
+        if (_outputListening) {
+          _outputController.addError(error);
+        } else {
+          _pendingError = error;
         }
       case 'done':
-        if (!_outputController.isClosed) _outputController.close();
+        if (_outputListening) {
+          _outputController.close();
+        } else {
+          _pendingDone = true;
+        }
     }
   }
 

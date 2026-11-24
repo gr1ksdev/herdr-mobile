@@ -97,6 +97,29 @@ void main() {
     await small.close();
   });
 
+  test('plain reads strip ANSI for previews and answer guards', () async {
+    await transport.request('session.snapshot');
+    pty.output.add(_bytes('\x1b[31mred\x1b[0m\n'));
+    await _flush();
+    final read = (await transport.request('pane.read', {'strip_ansi': true}))['read'] as Map<String, dynamic>;
+    expect(read['text'], 'red\n');
+  });
+
+  test('background subscriptions do not get output events', () async {
+    await transport.request('session.snapshot');
+    final seen = <Map<String, dynamic>>[];
+    final sub = transport
+        .events(const [{'type': 'pane.agent_status_changed', 'pane_id': LocalTransport.paneId}])
+        .listen(seen.add);
+    addTearDown(sub.cancel);
+    await _flush();
+
+    pty.output.add(_bytes('quiet\n'));
+    await _flush();
+    expect(seen.length, 1); // only the subscription ack
+    expect(seen.single['event'], subscriptionStartedEvent);
+  });
+
   test('send text and keys reach the pty as bytes', () async {
     await transport.request('session.snapshot');
     await transport.request('pane.send_text', {'text': 'ls'});
@@ -119,7 +142,7 @@ void main() {
 
   test('events ack before output and carry the pane id', () async {
     await transport.request('session.snapshot');
-    final events = transport.events(const []);
+    final events = transport.events(const [{'type': 'pane.updated'}]);
     final seen = <Map<String, dynamic>>[];
     final sub = events.listen(seen.add);
     addTearDown(sub.cancel);

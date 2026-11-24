@@ -4,6 +4,15 @@ What changed for the person using herdr mobile, newest first. Versions follow
 `0.1.x` patch releases; each section is the release notes of its GitHub
 release.
 
+## [Unreleased]
+
+### Debian on the phone (in progress)
+
+- A `Debian` machine in the board now runs a shell on the phone itself, behind
+  the same transport as remote machines. The board, the pane and the answer
+  guards are unchanged. The first build is still a spike: it runs Android's
+  shell, not the Debian rootfs yet, and its APK is unsigned.
+
 ## [0.1.70] - 2026-11-24
 
 ### Every link opens in herdr

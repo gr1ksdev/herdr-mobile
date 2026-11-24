@@ -54,10 +54,11 @@ Implemented: the transport contract and its API shim with fake-PTY tests; the
 PTY JNI layer and a Kotlin plugin that currently spawns `/system/bin/sh` as a
 spike; the main-isolate bridge that keeps platform channels off the transport
 worker; a `MachineKind.local` profile added on first real start; factory and
-connection wiring. Not implemented yet: the foreground service, the PRoot and
-rootfs port, the setup screen, UI for adding/removing the local machine, and
-the release workflow changes. Nothing here has been analysed, tested on a
-device or built into an APK.
+connection wiring; a manual CI workflow builds and optionally publishes the
+APK. Not implemented yet: the foreground service, the PRoot and rootfs port,
+the setup screen, UI for adding/removing the local machine, and uploading the
+rootfs as a release asset. Nothing here has been analysed, tested on a device
+or built into an APK.
 
 ## Build and release (planned)
 

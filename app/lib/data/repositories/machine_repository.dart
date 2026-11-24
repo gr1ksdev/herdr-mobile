@@ -13,19 +13,26 @@ import '../models/machine_profile.dart';
 /// machine.
 const localMachineId = 'local-debian';
 
-/// Adds the local Debian machine the first time the app starts. Later starts
-/// keep whatever the person did with it; no silent re-adding after a removal.
+/// Remembers that the local machine was offered once. Removing it is a choice
+/// the next boot must respect; checking for `kind == local` alone would add
+/// it straight back.
+const localMachineOfferedKey = 'machines.local.offered';
+
 Future<void> ensureLocalMachine(MachineRepository machines) async {
-  if (machines.machines.any((m) => m.kind == MachineKind.local)) return;
-  await machines.save(
-    const MachineProfile(
-      id: localMachineId,
-      label: 'Debian',
-      host: 'local',
-      username: 'local',
-      kind: MachineKind.local,
-    ),
-  );
+  final prefs = await SharedPreferences.getInstance();
+  if (prefs.getBool(localMachineOfferedKey) == true) return;
+  if (!machines.machines.any((m) => m.kind == MachineKind.local)) {
+    await machines.save(
+      const MachineProfile(
+        id: localMachineId,
+        label: 'Debian',
+        host: 'local',
+        username: 'local',
+        kind: MachineKind.local,
+      ),
+    );
+  }
+  await prefs.setBool(localMachineOfferedKey, true);
 }
 
 /// Persists non-secret machine profiles.

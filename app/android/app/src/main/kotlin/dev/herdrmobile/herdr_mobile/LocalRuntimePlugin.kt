@@ -25,6 +25,8 @@ class LocalRuntimePlugin : MethodChannel.MethodCallHandler, EventChannel.StreamH
     private val main = Handler(Looper.getMainLooper())
     private var sink: EventChannel.EventSink? = null
     private var pty: ParcelFileDescriptor? = null
+    private var readPty: ParcelFileDescriptor? = null
+    private var writePty: ParcelFileDescriptor? = null
     private var input: FileOutputStream? = null
     private var reader: Thread? = null
     private var pid = -1
@@ -95,38 +97,64 @@ class LocalRuntimePlugin : MethodChannel.MethodCallHandler, EventChannel.StreamH
             )
             val child = TermProcess.createSubprocess(master, command, argv, env)
             if (child <= 0) throw IOException("Could not start the local shell")
-            pid = child
-            pty = master
-            input = FileOutputStream(master.fileDescriptor)
-            running = true
-            val source = FileInputStream(master.fileDescriptor)
-            reader = Thread(
-                {
-                    val buffer = ByteArray(8192)
-                    try {
-                        while (running) {
-                            val count = source.read(buffer)
-                            if (count <= 0) break
-                            val chunk = buffer.copyOf(count)
-                            main.post { sink?.success(chunk) }
-                        }
-                    } catch (e: IOException) {
-                        if (running) main.post { sink?.error("pty", e.message, null) }
-                    } finally {
+            // From here on, a failure must end the process we just created.
+            // Closing a stream closes its fd, so the two streams get duplicates
+            // and only `pty` owns the original master fd.
+            var createdChild = child
+            try {
+                val reads = master.dup()
+                val writes = master.dup()
+                readPty = reads
+                writePty = writes
+                pty = master
+                input = FileOutputStream(writes.fileDescriptor)
+                val source = FileInputStream(reads.fileDescriptor)
+                pid = child
+                createdChild = -1
+                running = true
+                reader = Thread(
+                    {
+                        val buffer = ByteArray(8192)
                         try {
-                            source.close()
-                        } catch (_: IOException) {
+                            while (running) {
+                                val count = source.read(buffer)
+                                if (count <= 0) break
+                                val chunk = buffer.copyOf(count)
+                                main.post { sink?.success(chunk) }
+                            }
+                        } catch (e: IOException) {
+                            if (running) main.post { sink?.error("pty", e.message, null) }
+                        } finally {
+                            try {
+                                source.close()
+                            } catch (_: IOException) {
+                            }
+                            if (running) {
+                                running = false
+                                main.post { sink?.endOfStream() }
+                            }
                         }
-                        if (running) {
-                            running = false
-                            main.post { sink?.endOfStream() }
-                        }
-                    }
-                },
-                "herdr-local-pty",
-            ).apply {
-                isDaemon = true
-                start()
+                    },
+                    "herdr-local-pty",
+                ).apply {
+                    isDaemon = true
+                    start()
+                }
+            } catch (e: Exception) {
+                if (createdChild > 0) TermProcess.killChilds(createdChild)
+                try {
+                    readPty?.close()
+                } catch (_: IOException) {
+                }
+                try {
+                    writePty?.close()
+                } catch (_: IOException) {
+                }
+                readPty = null
+                writePty = null
+                input = null
+                pty = null
+                throw e
             }
         } catch (e: Exception) {
             try {
@@ -147,6 +175,16 @@ class LocalRuntimePlugin : MethodChannel.MethodCallHandler, EventChannel.StreamH
         } catch (_: IOException) {
         }
         input = null
+        try {
+            readPty?.close()
+        } catch (_: IOException) {
+        }
+        try {
+            writePty?.close()
+        } catch (_: IOException) {
+        }
+        readPty = null
+        writePty = null
         try {
             pty?.close()
         } catch (_: IOException) {
