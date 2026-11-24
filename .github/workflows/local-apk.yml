@@ -65,12 +65,6 @@ jobs:
           have="$(sed -n 's/^version: \([0-9.]*\)+.*/\1/p' app/pubspec.yaml)"
           [ "$want" = "$have" ] || { echo "input $want != pubspec $have"; exit 1; }
 
-      # Temporary while this workspace has no Dart SDK: format the sources in
-      # the runner before tool/check.sh's --set-exit-if-changed check.
-      - name: Format Dart sources
-        working-directory: app
-        run: dart format lib test
-
       - name: Analyze and test
         env:
           HERDR_TEST_ONLY: rest
