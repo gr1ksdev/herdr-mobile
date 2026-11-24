@@ -73,12 +73,8 @@ HerdrTransport _buildSsh(Object? config, void Function(String) onPin, void Funct
 /// The phone's own Debian runtime. Same isolate boundary and the same
 /// `HerdrTransport` contract as SSH, so the board and the pane cannot tell
 /// where the shell lives. No host key, credentials or network are involved.
-HerdrTransport createLocalTransport() => IsolateTransport(
-  builder: _buildLocal,
-  config: () => null,
-  onPin: (_) {},
-  supportsFiles: false,
-);
+HerdrTransport createLocalTransport() =>
+    IsolateTransport(builder: _buildLocal, config: () => null, onPin: (_) {}, supportsFiles: false);
 
 HerdrTransport _buildLocal(Object? config, void Function(String) onPin, void Function(String) onNotice) =>
     LocalTransport(MethodChannelLocalPty());

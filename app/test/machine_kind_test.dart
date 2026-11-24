@@ -3,12 +3,7 @@ import 'package:herdr_mobile/data/models/machine_profile.dart';
 
 void main() {
   test('stored machines without a kind stay SSH', () {
-    final profile = MachineProfile.fromJson({
-      'id': 'm',
-      'label': 'box',
-      'host': 'h',
-      'username': 'u',
-    });
+    final profile = MachineProfile.fromJson({'id': 'm', 'label': 'box', 'host': 'h', 'username': 'u'});
     expect(profile.kind, MachineKind.ssh);
   });
 

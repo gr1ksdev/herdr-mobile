@@ -23,19 +23,21 @@ class MethodChannelLocalPty implements LocalPtyPlatform {
     _control = control;
     // The shell prints its prompt as soon as it starts, which can be before
     // LocalTransport subscribes. Replay what arrived in the meantime.
-    _outputController = StreamController<Uint8List>(onListen: () {
-      _outputListening = true;
-      for (final bytes in _buffer) {
-        _outputController.add(bytes);
-      }
-      _buffer.clear();
-      final error = _pendingError;
-      if (error != null) {
-        _pendingError = null;
-        _outputController.addError(error);
-      }
-      if (_pendingDone) _outputController.close();
-    });
+    _outputController = StreamController<Uint8List>(
+      onListen: () {
+        _outputListening = true;
+        for (final bytes in _buffer) {
+          _outputController.add(bytes);
+        }
+        _buffer.clear();
+        final error = _pendingError;
+        if (error != null) {
+          _pendingError = null;
+          _outputController.addError(error);
+        }
+        if (_pendingDone) _outputController.close();
+      },
+    );
     _replies.listen((Object? raw) => _onReply(raw! as List<Object?>));
     _output.listen((Object? raw) => _onOutput(raw! as List<Object?>));
     control.send(['listen', _output.sendPort]);

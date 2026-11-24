@@ -109,7 +109,9 @@ void main() {
     await transport.request('session.snapshot');
     final seen = <Map<String, dynamic>>[];
     final sub = transport
-        .events(const [{'type': 'pane.agent_status_changed', 'pane_id': LocalTransport.paneId}])
+        .events(const [
+          {'type': 'pane.agent_status_changed', 'pane_id': LocalTransport.paneId},
+        ])
         .listen(seen.add);
     addTearDown(sub.cancel);
     await _flush();
@@ -123,26 +125,32 @@ void main() {
   test('send text and keys reach the pty as bytes', () async {
     await transport.request('session.snapshot');
     await transport.request('pane.send_text', {'text': 'ls'});
-    await transport.request('pane.send_keys', {'keys': ['enter', 'ctrl+c']});
-    await transport.request('pane.send_input', {'text': 'pwd', 'keys': ['enter']});
+    await transport.request('pane.send_keys', {
+      'keys': ['enter', 'ctrl+c'],
+    });
+    await transport.request('pane.send_input', {
+      'text': 'pwd',
+      'keys': ['enter'],
+    });
 
-    expect(
-      pty.written.map((bytes) => utf8.decode(bytes)).toList(),
-      ['ls', '\r', '\x03', 'pwd', '\r'],
-    );
+    expect(pty.written.map((bytes) => utf8.decode(bytes)).toList(), ['ls', '\r', '\x03', 'pwd', '\r']);
   });
 
   test('unknown keys are refused instead of guessed', () async {
     await transport.request('session.snapshot');
     expect(
-      transport.request('pane.send_keys', {'keys': ['super+p']}),
+      transport.request('pane.send_keys', {
+        'keys': ['super+p'],
+      }),
       throwsA(isA<HerdrApiException>()),
     );
   });
 
   test('events ack before output and carry the pane id', () async {
     await transport.request('session.snapshot');
-    final events = transport.events(const [{'type': 'pane.updated'}]);
+    final events = transport.events(const [
+      {'type': 'pane.updated'},
+    ]);
     final seen = <Map<String, dynamic>>[];
     final sub = events.listen(seen.add);
     addTearDown(sub.cancel);

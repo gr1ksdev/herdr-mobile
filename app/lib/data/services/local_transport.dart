@@ -84,11 +84,14 @@ class LocalTransport implements HerdrTransport {
       if (id != paneId) {
         throw HerdrTransportException('Unexpected local pane id: $id', fatal: true);
       }
-      _output = utf8.decoder.bind(_platform.output(id)).transform(const LineSplitter()).listen(
-        _onLine,
-        onError: (Object e, StackTrace s) => _fail(const HerdrTransportException('Local PTY output failed'), e, s),
-        onDone: () => _fail(const HerdrTransportException('Local PTY ended'), null, null),
-      );
+      _output = utf8.decoder
+          .bind(_platform.output(id))
+          .transform(const LineSplitter())
+          .listen(
+            _onLine,
+            onError: (Object e, StackTrace s) => _fail(const HerdrTransportException('Local PTY output failed'), e, s),
+            onDone: () => _fail(const HerdrTransportException('Local PTY ended'), null, null),
+          );
     } on Object {
       // A failed start is not cached: the next call tries again.
       _starting = null;
@@ -255,11 +258,7 @@ class LocalTransport implements HerdrTransport {
       // The snapshot came before the subscription: one ack closes the gap,
       // exactly as a real herdr subscription does.
       controller.add(const {'event': subscriptionStartedEvent});
-      inner = _events.stream.listen(
-        controller.add,
-        onError: controller.addError,
-        onDone: controller.close,
-      );
+      inner = _events.stream.listen(controller.add, onError: controller.addError, onDone: controller.close);
     };
     controller.onCancel = () => inner.cancel();
     return controller.stream;
@@ -280,10 +279,8 @@ class LocalTransport implements HerdrTransport {
   @override
   bool get supportsFiles => false;
 
-  RemoteFileException _unsupportedFile(String operation) => RemoteFileException(
-    RemoteFileErrorKind.unsupported,
-    'The local runtime has no file channel ($operation)',
-  );
+  RemoteFileException _unsupportedFile(String operation) =>
+      RemoteFileException(RemoteFileErrorKind.unsupported, 'The local runtime has no file channel ($operation)');
 
   @override
   Future<RemoteStat> statFile(String path) => Future.error(_unsupportedFile('stat'));
@@ -314,14 +311,12 @@ class LocalTransport implements HerdrTransport {
   }
 
   @override
-  Future<ExecChannel> openExec(String command, {bool zipped = false}) => Future.error(
-    const HerdrTransportException('The local runtime has no exec channel', fatal: true),
-  );
+  Future<ExecChannel> openExec(String command, {bool zipped = false}) =>
+      Future.error(const HerdrTransportException('The local runtime has no exec channel', fatal: true));
 
   @override
-  Future<WebBridgeInfo> openWebBridge(WebBridgeSpec spec) => Future.error(
-    const HerdrTransportException('The local runtime has no web bridge', fatal: true),
-  );
+  Future<WebBridgeInfo> openWebBridge(WebBridgeSpec spec) =>
+      Future.error(const HerdrTransportException('The local runtime has no web bridge', fatal: true));
 
   @override
   Future<void> close() async {
