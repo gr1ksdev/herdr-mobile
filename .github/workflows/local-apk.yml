@@ -1,0 +1,115 @@
+name: Local Debian APK
+
+# Builds the fork's APK with the phone-hosted Debian runtime. Manual on
+# purpose: the first releases are unsigned, so a tag push must never publish
+# one by accident. Set the repository variable ALLOW_UNSIGNED_RELEASE=true
+# and tick `publish` only when you have checked the artifact.
+#
+# The rootfs archive is a separate release asset; upload it with
+# `gh release upload <tag> <rootfs.tgz> <rootfs.tgz>.sha256` after this run.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch or tag to build'
+        type: string
+        required: true
+        default: integration/debian-local
+      publish:
+        description: 'Publish the APK to a GitHub Release'
+        type: boolean
+        default: false
+      version:
+        description: 'Version to tag/publish (must match app/pubspec.yaml, e.g. 0.1.71)'
+        type: string
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: local-apk
+  cancel-in-progress: false
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.6
+          cache: true
+
+      - name: Check version input
+        if: inputs.version != ''
+        run: |
+          want="${{ inputs.version }}"
+          have="$(sed -n 's/^version: \([0-9.]*\)+.*/\1/p' app/pubspec.yaml)"
+          [ "$want" = "$have" ] || { echo "input $want != pubspec $have"; exit 1; }
+
+      - name: Analyze and test
+        env:
+          HERDR_TEST_ONLY: rest
+        run: tool/check.sh
+
+      - name: Build unsigned ARM64 APK
+        working-directory: app
+        run: |
+          flutter build apk --release --target-platform android-arm64 \
+            --android-project-arg=allowDebugSigning=true \
+            --split-debug-info=build/symbols
+
+      - name: Collect assets
+        run: |
+          set -euo pipefail
+          apk="$(find app/build/app/outputs/flutter-apk -name '*release.apk' -print -quit)"
+          [ -n "$apk" ] || { echo 'No release APK was built'; exit 1; }
+          version="$(sed -n 's/^version: \([0-9.+]*\)/\1/p' app/pubspec.yaml)"
+          mkdir -p dist
+          cp "$apk" "dist/herdr-mobile-$version.apk"
+          (cd dist && sha256sum "herdr-mobile-$version.apk" > SHA256SUMS)
+          echo "APK=dist/herdr-mobile-$version.apk" >> "$GITHUB_ENV"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: herdr-mobile-local-apk
+          path: dist/*
+
+      - name: Check unsigned release is allowed
+        if: inputs.publish
+        env:
+          ALLOW_UNSIGNED: ${{ vars.ALLOW_UNSIGNED_RELEASE }}
+        run: |
+          [ "$ALLOW_UNSIGNED" = "true" ] || { echo 'Set repository variable ALLOW_UNSIGNED_RELEASE=true first'; exit 1; }
+
+      - name: Publish release
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tool/release-notes.sh "${VERSION%+*}" > "$RUNNER_TEMP/notes.md"
+          tag="v${VERSION%+*}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$APK" dist/SHA256SUMS --clobber
+            gh release edit "$tag" --notes-file "$RUNNER_TEMP/notes.md"
+          else
+            gh release create "$tag" "$APK" dist/SHA256SUMS --title "herdr mobile $tag" \
+              --notes-file "$RUNNER_TEMP/notes.md"
+          fi
+          echo "::warning title=Unsigned APK::$tag was published without a production signing key."
