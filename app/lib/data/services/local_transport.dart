@@ -64,6 +64,7 @@ class LocalTransport implements HerdrTransport {
   static final _csi = RegExp(r'\x1B\[[0-?]*[ -/]*[@-~]');
 
   final List<String> _lines = [];
+  var _dropped = 0;
   final _events = StreamController<Map<String, dynamic>>.broadcast();
   StreamSubscription<String>? _output;
   Future<void>? _starting;
@@ -103,6 +104,7 @@ class LocalTransport implements HerdrTransport {
     _lines.add(line);
     while (_lines.length > maxLines) {
       _lines.removeAt(0);
+      _dropped++;
     }
     // The background profile asks only for status changes, not for output.
     // Sending pane_updated anyway would wake the radio for every shell line.
@@ -182,7 +184,7 @@ class LocalTransport implements HerdrTransport {
         if (params['strip_ansi'] == true) text = text.replaceAll(_csi, '');
         return {
           'type': 'pane_read',
-          'read': {'text': text, 'truncated': from > 0},
+          'read': {'text': text, 'truncated': from > 0 || _dropped > 0},
         };
 
       case 'pane.send_text':

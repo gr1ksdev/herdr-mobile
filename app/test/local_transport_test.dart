@@ -57,7 +57,9 @@ void main() {
 
   tearDown(() async {
     await transport.close();
-    await pty.ptyOutput.close();
+    // A single-subscription controller with no listener never completes its
+    // close() future; the transport has already cancelled its subscription.
+    pty.ptyOutput.close();
   });
 
   test('ping answers without starting the runtime', () async {
