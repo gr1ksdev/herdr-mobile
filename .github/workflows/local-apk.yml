@@ -9,6 +9,8 @@ name: Local Debian APK
 # `gh release upload <tag> <rootfs.tgz> <rootfs.tgz>.sha256` after this run.
 
 on:
+  push:
+    branches: [integration/debian-local]
   workflow_dispatch:
     inputs:
       ref:
