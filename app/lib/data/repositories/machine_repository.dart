@@ -7,6 +7,27 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/machine_profile.dart';
 
+/// Stable id of the phone's own machine. Its host/username are placeholders:
+/// nothing in a local connection uses them, but keeping the fields required
+/// lets the board, the fleet and the connection cache treat it like any other
+/// machine.
+const localMachineId = 'local-debian';
+
+/// Adds the local Debian machine the first time the app starts. Later starts
+/// keep whatever the person did with it; no silent re-adding after a removal.
+Future<void> ensureLocalMachine(MachineRepository machines) async {
+  if (machines.machines.any((m) => m.kind == MachineKind.local)) return;
+  await machines.save(
+    const MachineProfile(
+      id: localMachineId,
+      label: 'Debian',
+      host: 'local',
+      username: 'local',
+      kind: MachineKind.local,
+    ),
+  );
+}
+
 /// Persists non-secret machine profiles.
 abstract interface class ProfileStore {
   Future<List<MachineProfile>> read();

@@ -3,10 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'boot.dart';
+import 'data/services/local_pty_platform.dart';
 import 'ui/support/error_view.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Platform channels live here; the local transport's worker reaches them
+  // through this bridge. Safe before any machine connection is built.
+  LocalPtyBridge.instance.init();
   installErrorReporting();
   // The OFL asks the licence to travel with the font; read only when Settings >
   // About > Licences opens.
@@ -16,5 +20,5 @@ Future<void> main() async {
     ], await rootBundle.loadString('assets/fonts/HerdrSymbols-OFL.txt'));
   });
   await configureSystemUi();
-  await launchApp();
+  await launchApp(boot: () => bootApp(withLocalMachine: true));
 }

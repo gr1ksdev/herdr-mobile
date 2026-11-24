@@ -28,7 +28,13 @@ typedef TransportBuilder = HerdrTransport Function(
 /// The worker starts on first use and is replaced if it ever dies. A request
 /// in flight when it dies fails with a retryable [HerdrTransportException].
 class IsolateTransport implements HerdrTransport {
-  IsolateTransport({required this.builder, required this.config, required this.onPin, this.onNotice});
+  IsolateTransport({
+    required this.builder,
+    required this.config,
+    required this.onPin,
+    this.onNotice,
+    this.supportsFiles = true,
+  });
 
   final TransportBuilder builder;
 
@@ -42,6 +48,12 @@ class IsolateTransport implements HerdrTransport {
   /// Receives text the server shows before login (an SSH banner), such as a
   /// sign-in link to approve in a browser.
   final void Function(String banner)? onNotice;
+
+  /// Declared by the caller because the interface is synchronous and asking
+  /// the worker would make every check a request. The local runtime has no
+  /// file channel; SSH always has one.
+  @override
+  final bool supportsFiles;
 
   /// Sees every message from the worker before it is handled. Tests use it to
   /// check what crosses the isolate boundary.
@@ -90,9 +102,6 @@ class IsolateTransport implements HerdrTransport {
   @override
   Future<Map<String, dynamic>> request(String method, [Map<String, dynamic> params = const {}]) async =>
       (await _ensure()).request(method, params);
-
-  @override
-  bool get supportsFiles => true;
 
   @override
   Future<RemoteStat> statFile(String path) async => RemoteStat.fromJson(await _op('stat', [path]) as Map);

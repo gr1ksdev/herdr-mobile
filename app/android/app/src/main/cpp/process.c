@@ -1,0 +1,327 @@
+/*
+ * Copyright (C) 2018-2024 Roumen Petrov.  All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include "registration.h"
+#include "compat.h"
+
+#if defined(__cplusplus)
+# error "__cplusplus"
+#endif
+
+#include <malloc.h>
+#include <fcntl.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <memory.h>
+#include <unistd.h>
+#include <signal.h>
+#include <sys/ioctl.h>
+#include <sys/syscall.h>
+#include <wait.h>
+
+#ifndef RENAME_NOREPLACE
+# define RENAME_NOREPLACE (1 << 0)
+#endif
+
+int android_grantpt(int fd);
+
+#define grantpt android_grantpt
+
+
+static char *
+dup_jbyteArray(JNIEnv *env, jbyteArray array) {
+    char *ret;
+    jsize len;
+    int k;
+
+    len = (*env)->GetArrayLength(env, array);
+    if (len < 1) return NULL;
+
+    ret = malloc((size_t) len + 1);
+    if (ret == NULL) return NULL;
+
+    jbyte *data = (*env)->GetByteArrayElements(env, array, NULL);
+    for (k = 0; k < len; k++)
+        ret[k] = data[k];
+    ret[k] = '\0';
+    (*env)->ReleaseByteArrayElements(env, array, data, JNI_ABORT);
+
+    return ret;
+}
+
+
+static char **
+dup_jobjectArray(JNIEnv *env, jobjectArray list) {
+    char **ret;
+    jsize len;
+    int k;
+
+    len = (*env)->GetArrayLength(env, list);
+    if (len < 1) return NULL;
+
+    ret = malloc((len + 1) * sizeof(char *));
+    if (ret == NULL) return NULL;
+
+    for (k = 0; k < len; k++) {
+        jobject item = (*env)->GetObjectArrayElement(env, list, (jsize) k);
+        ret[k] = dup_jbyteArray(env, item);
+        if (ret[k] == NULL) goto err;
+    }
+    ret[len] = NULL;
+
+    return ret;
+
+    err:
+    for (--k; k >= 0; k--) {
+        free(ret[k]);
+    }
+    free(ret);
+    return NULL;
+}
+
+
+static pid_t
+process_create_subprocess(
+        JNIEnv *env, jobject clazz,
+        int ptm, char *path, char **argv, char **envp, char *cwd
+) {
+    pid_t pid;
+    char devname[64]; /*match bionic, see libc/unistd/ptsname_r.c*/
+
+    (void) clazz;
+
+    fcntl(ptm, F_SETFD, FD_CLOEXEC);
+
+    /* openpty part for amaster ... */
+    if (grantpt(ptm) < 0) return -1;
+
+    if (unlockpt(ptm) < 0) {
+        throwIOException(env, "unlockpt fail / error %d/%s",
+                         errno, strerror(errno));
+        return -1;
+    }
+
+    memset(devname, 0, sizeof(devname));
+    if (ptsname_r(ptm, devname, sizeof(devname)) != 0) {
+        throwIOException(env, "ptsname_r fail / error %d/%s",
+                         errno, strerror(errno));
+        return -1;
+    }
+
+    pid = fork();
+    if (pid < 0) {
+        throwIOException(env, "fork fail / error %d/%s",
+                         errno, strerror(errno));
+        return -1;
+    }
+
+    if (pid > 0) {
+        /* in parent */
+        return pid;
+    }
+    /* else in child */
+    {
+        int pts;
+
+        if (cwd != NULL && chdir(cwd) < 0) {
+            _exit(127);
+        }
+
+        /* make controlling tty ... */
+
+        /* required by TIOCSCTTY */
+        if (setsid() < 0) {
+            throwIOException(env, "setsid fail / error %d/%s",
+                             errno, strerror(errno));
+            exit(-1);
+        }
+
+        /* openpty part for aslave ... */
+        pts = open(devname, O_RDWR | O_NOCTTY);
+        if (pts < 0) {
+            throwIOException(env, "open pty fail / error %d/%s",
+                             errno, strerror(errno));
+            exit(-1);
+        }
+
+        /* set controlling tty */
+        if (ioctl(pts, TIOCSCTTY, 0) < 0) {
+            throwIOException(env, "ioctl for TIOCSCTTY fail / error %d/%s",
+                             errno, strerror(errno));
+            exit(-1);
+        }
+
+        /* Redirect stdin/stdout/stderr from the pseudo tty */
+        dup2(pts, STDIN_FILENO);
+        dup2(pts, STDOUT_FILENO);
+        dup2(pts, STDERR_FILENO);
+
+        closefrom(STDERR_FILENO + 1);
+
+        /* Android app processes ignore SIGHUP, and an ignored disposition
+           survives execve(), so without this the shell and every job it
+           starts would shrug off the hangup that closing a window sends. */
+        signal(SIGHUP, SIG_DFL);
+
+        execve(path, argv, envp);
+        /* NOTE On success, execve() does not return */
+        {
+            throwIOException(env, "execve fail / error %d/%s",
+                             errno, strerror(errno));
+            exit(-1);
+        }
+    }
+}
+
+
+static jint
+jprocess_create_subprocess(
+        JNIEnv *env, jobject clazz,
+        jint ptm, jbyteArray path_j, jobjectArray argv_j, jobjectArray envp_j,
+        jbyteArray cwd_j
+) {
+    int k;
+    jint result;
+    char *path = NULL, **argv = NULL, **envp = NULL, *cwd = NULL;
+
+    path = dup_jbyteArray(env, path_j);
+    if (path == NULL) goto err;
+
+    argv = dup_jobjectArray(env, argv_j);
+    if (argv == NULL) goto err;
+
+    envp = dup_jobjectArray(env, envp_j);
+    if (envp == NULL) goto err;
+
+    cwd = dup_jbyteArray(env, cwd_j);
+
+    /* NOTE:
+     * - typedef int __kernel_pid_t => __pid_t => pid_t
+     * - typedef int __int32_t => int32_t => jint
+     */
+    result = process_create_subprocess(env, clazz, ptm, path, argv, envp, cwd);
+    free(cwd);
+    for (k = 0; envp[k] != NULL; k++) free(envp[k]);
+    free(envp);
+    for (k = 0; argv[k] != NULL; k++) free(argv[k]);
+    free(argv);
+    free(path);
+    return result;
+
+    err:
+    free(cwd);
+    if (envp != NULL) {
+        for (k = 0; envp[k] != NULL; k++)
+            free(envp[k]);
+        free(envp);
+    }
+    if (argv != NULL) {
+        for (k = 0; argv[k] != NULL; k++)
+            free(argv[k]);
+        free(argv);
+    }
+    free(path);
+
+    throwOutOfMemoryError(env, "cannot allocate memory for process arguments");
+    return -1;
+}
+
+
+static jint
+process_wait_exit(
+        JNIEnv *env, jobject clazz,
+        jint pid
+) {
+    int wstatus;
+    jint result = -1;
+
+    (void) env;
+    (void) clazz;
+
+    waitpid((pid_t) pid, &wstatus, 0);
+    if (WIFEXITED(wstatus)) result = WEXITSTATUS(wstatus);
+    else if (WIFSIGNALED(wstatus)) result = WTERMSIG(wstatus);
+
+    return result;
+}
+
+
+static void
+process_finish_childs(
+        JNIEnv *env, jobject clazz,
+        jint pid
+) {
+    (void) env;
+    (void) clazz;
+
+    /* send SIGHUP to process group to die child processes... */
+    (void) kill(-(pid_t) pid, SIGHUP);
+}
+
+
+static void
+process_kill_childs(
+        JNIEnv *env, jobject clazz,
+        jint pid
+) {
+    (void) env;
+    (void) clazz;
+
+    /* Follow-up to the SIGHUP above, for the user-facing Exit: a process that
+       chose to ignore the hangup does not get to ignore this one. */
+    (void) kill(-(pid_t) pid, SIGKILL);
+}
+
+
+static jint
+process_rename_no_replace(
+        JNIEnv *env, jobject clazz,
+        jbyteArray from, jbyteArray to
+) {
+    char *old_path, *new_path;
+    jint result = 0;
+
+    (void) clazz;
+
+    old_path = dup_jbyteArray(env, from);
+    new_path = dup_jbyteArray(env, to);
+    if (old_path == NULL || new_path == NULL)
+        result = ENOMEM;
+    /* Called directly: bionic has no renameat2() wrapper before API 30. */
+    else if (syscall(__NR_renameat2, AT_FDCWD, old_path, AT_FDCWD, new_path,
+                     RENAME_NOREPLACE) != 0)
+        result = errno;
+    free(old_path);
+    free(new_path);
+    return result;
+}
+
+
+int
+register_process(JNIEnv *env) {
+    static JNINativeMethod methods[] = {
+            {"createSubprocess", "(I[B[[B[[B[B)I", (void *) jprocess_create_subprocess},
+            {"waitExit",         "(I)I",         (void *) process_wait_exit},
+            {"finishChilds",     "(I)V",         (void *) process_finish_childs},
+            {"killChilds",       "(I)V",         (void *) process_kill_childs},
+            {"renameNoReplace",  "([B[B)I",      (void *) process_rename_no_replace}
+    };
+    return register_native(
+            env,
+            "com/thothterm/Process$Native",
+            methods, sizeof(methods) / sizeof(*methods)
+    );
+}

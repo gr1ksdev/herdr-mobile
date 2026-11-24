@@ -50,6 +50,13 @@ android {
         }
     }
 
+    // PTY/termios JNI adapted from ThothTerm's libtermexec (Apache-2.0).
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+        }
+    }
+
     defaultConfig {
         // `--android-project-arg=appIdSuffix=.kbbench` installs a benchmark build
         // beside the real app (own data, own icon) instead of over it.

@@ -264,6 +264,8 @@ class MachineFormViewModel extends ChangeNotifier {
     socketPath: v.socketPath.isEmpty ? null : v.socketPath,
     hostKeyFingerprint: fingerprint,
     enabled: existing?.enabled ?? true,
+    // Editing a phone-hosted machine must not silently turn it into SSH.
+    kind: existing?.kind ?? MachineKind.ssh,
   );
 
   /// Blank secret fields keep the stored value when editing; secrets that do

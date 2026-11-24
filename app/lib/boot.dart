@@ -138,9 +138,14 @@ Future<HerdrMobileApp> bootApp({
   TranscriptCache? transcriptCache,
   ConnectionFactory? connect,
   Notifier? notifier,
+
+  /// The real app always gets the phone's own machine. Tests build their own
+  /// fleet and must not find an extra one in it.
+  bool withLocalMachine = false,
 }) async {
   final machines = MachineRepository(profiles: PrefsProfileStore(), secrets: secrets ?? KeychainSecretStore());
   await machines.load();
+  if (withLocalMachine) await ensureLocalMachine(machines);
   // The keychain starts on every machine's secrets now, while the rest of the
   // stores load and the first frame is built; connections pick them up later.
   machines.warmSecrets();

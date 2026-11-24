@@ -4,6 +4,10 @@
 /// identity from the tailnet and, in check mode, asks for a browser approval.
 enum SshAuth { key, password, none }
 
+/// Where a machine's herdr API lives. Stored rows without `kind` are SSH:
+/// that keeps every existing `machines.v1` profile valid without a rewrite.
+enum MachineKind { ssh, local }
+
 /// A saved remote herdr machine. Secrets (private key, passphrase, password)
 /// are never stored here; see `SecretStore`.
 class MachineProfile {
@@ -18,6 +22,7 @@ class MachineProfile {
     this.socketPath,
     this.hostKeyFingerprint,
     this.enabled = true,
+    this.kind = MachineKind.ssh,
   });
 
   factory MachineProfile.fromJson(Map<String, dynamic> j) => MachineProfile(
@@ -31,6 +36,7 @@ class MachineProfile {
     socketPath: j['socketPath'] as String?,
     hostKeyFingerprint: j['hostKeyFingerprint'] as String?,
     enabled: j['enabled'] != false,
+    kind: MachineKind.values.asNameMap()[j['kind']] ?? MachineKind.ssh,
   );
 
   /// [fromJson] for a stored row that may be anything: null when [row] is not
@@ -63,6 +69,11 @@ class MachineProfile {
   final String? hostKeyFingerprint;
   final bool enabled;
 
+  /// `local` machines run herdr-compatible services on the phone itself.
+  /// Their `host`/`username` are unused placeholders kept so the rest of the
+  /// app can treat every connection the same way.
+  final MachineKind kind;
+
   MachineProfile copyWith({
     String? label,
     String? host,
@@ -75,6 +86,7 @@ class MachineProfile {
     String? hostKeyFingerprint,
     bool clearHostKey = false,
     bool? enabled,
+    MachineKind? kind,
   }) => MachineProfile(
     id: id,
     label: label ?? this.label,
@@ -86,6 +98,7 @@ class MachineProfile {
     socketPath: clearSocketPath ? null : socketPath ?? this.socketPath,
     hostKeyFingerprint: clearHostKey ? null : hostKeyFingerprint ?? this.hostKeyFingerprint,
     enabled: enabled ?? this.enabled,
+    kind: kind ?? this.kind,
   );
 
   Map<String, dynamic> toJson() => {
@@ -99,6 +112,7 @@ class MachineProfile {
     if (socketPath != null) 'socketPath': socketPath,
     if (hostKeyFingerprint != null) 'hostKeyFingerprint': hostKeyFingerprint,
     'enabled': enabled,
+    'kind': kind.name,
   };
 }
 

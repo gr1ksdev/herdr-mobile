@@ -12,6 +12,7 @@ import androidx.core.content.FileProvider
 import com.dexterous.flutterlocalnotifications.ForegroundService
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
@@ -76,6 +77,11 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+        val localRuntime = LocalRuntimePlugin()
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "dev.herdrmobile/local-runtime")
+            .setMethodCallHandler(localRuntime)
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "dev.herdrmobile/local-runtime/output")
+            .setStreamHandler(localRuntime)
     }
 
     /**

@@ -1,6 +1,8 @@
 import '../models/machine_profile.dart';
 import 'herdr_transport.dart';
 import 'isolate_transport.dart';
+import 'local_pty_platform.dart';
+import 'local_transport.dart';
 import 'ssh_transport.dart';
 
 /// The one way the app opens a connection to a machine: SSH, hosted in a
@@ -67,3 +69,16 @@ HerdrTransport _buildSsh(Object? config, void Function(String) onPin, void Funct
     onNotice: onNotice,
   );
 }
+
+/// The phone's own Debian runtime. Same isolate boundary and the same
+/// `HerdrTransport` contract as SSH, so the board and the pane cannot tell
+/// where the shell lives. No host key, credentials or network are involved.
+HerdrTransport createLocalTransport() => IsolateTransport(
+  builder: _buildLocal,
+  config: () => null,
+  onPin: (_) {},
+  supportsFiles: false,
+);
+
+HerdrTransport _buildLocal(Object? config, void Function(String) onPin, void Function(String) onNotice) =>
+    LocalTransport(MethodChannelLocalPty());

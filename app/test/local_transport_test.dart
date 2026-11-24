@@ -37,6 +37,9 @@ class _FakePty implements LocalPtyPlatform {
   Future<void> stop(String paneId) async {
     stopped = true;
   }
+
+  @override
+  void dispose() {}
 }
 
 Uint8List _bytes(String text) => Uint8List.fromList(utf8.encode(text));

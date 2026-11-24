@@ -30,6 +30,9 @@ abstract interface class LocalPtyPlatform {
 
   /// Ends the session. [LocalTransport.close] is the only caller.
   Future<void> stop(String paneId);
+
+  /// Releases the ports/channels to the native side after [stop].
+  void dispose();
 }
 
 /// A `HerdrTransport` backed by a Debian PTY on this device.
@@ -318,6 +321,7 @@ class LocalTransport implements HerdrTransport {
     await _output?.cancel();
     if (!_events.isClosed) await _events.close();
     await _platform.stop(paneId);
+    _platform.dispose();
   }
 }
 

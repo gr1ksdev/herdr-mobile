@@ -26,6 +26,7 @@ import 'data/repositories/slash_usage.dart';
 import 'data/repositories/observed_sessions.dart';
 import 'data/repositories/terminal_settings.dart';
 import 'data/services/herdr_api.dart';
+import 'data/models/machine_profile.dart' show MachineKind;
 import 'data/repositories/host_inbox.dart' show InboxJanitor, PrefsInboxCleanupLog;
 import 'data/services/network_monitor.dart';
 import 'data/services/notifier.dart';
@@ -53,24 +54,28 @@ ConnectionFactory sshConnectionFactory({required MachineRepository machines, req
   return (profile, secrets) {
     // The transport reports login banners; they belong to the connection it
     // serves, which only exists once the transport has been built.
+    final isLocal = profile.kind == MachineKind.local;
     late final MachineConnection connection;
     connection = MachineConnection(
       profile: profile,
       cache: snapshotCache,
       api: HerdrApi(
-        createSshTransportLater(
-          // Asked at each worker start: a replaced worker gets the pin made since.
-          () => machines.byId(profile.id) ?? profile,
-          secrets,
-          (fp) => machines.pinHostKey(profile.id, fp),
-          (banner) => connection.onAuthNotice(banner),
-        ),
+        isLocal
+            ? createLocalTransport()
+            : createSshTransportLater(
+                // Asked at each worker start: a replaced worker gets the pin made since.
+                () => machines.byId(profile.id) ?? profile,
+                secrets,
+                (fp) => machines.pinHostKey(profile.id, fp),
+                (banner) => connection.onAuthNotice(banner),
+              ),
         machineId: profile.id,
       ),
       // omp opens its plan review without telling herdr the agent is blocked.
       screenWaits: const {'omp': ompWaitsOnPlanReview},
     );
-    inboxJanitor.watch(connection);
+    // A phone-hosted shell has no host inbox to sweep.
+    if (!isLocal) inboxJanitor.watch(connection);
     return connection;
   };
 }
