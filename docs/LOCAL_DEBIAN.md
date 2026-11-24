@@ -61,10 +61,14 @@ device or built into an APK.
 
 ## Build and release (planned)
 
-1. `tool/check.sh` — Flutter 3.47, `flutter analyze`, `flutter test`.
-2. Build one universal ARM APK; signing secrets are absent, so the first
-   releases are unsigned. Never commit a keystore or `key.properties`.
-3. Attach the APK, `SHA256SUMS`, the rootfs archive and its `SHA256SUMS` to a
-   `v0.1.x` GitHub Release. The tag's changelog section becomes the notes.
+1. CI (`.github/workflows/ci.yml`) runs `tool/check.sh` on every branch.
+2. Run the `Local Debian APK` workflow manually. It builds one ARM64 APK with
+   `-PallowDebugSigning=true` because no production key exists yet, and
+   uploads the APK and `SHA256SUMS` as an artifact. Never commit a keystore or
+   `key.properties`.
+3. To publish, set the repository variable `ALLOW_UNSIGNED_RELEASE=true` and
+   run the workflow with `publish` ticked. It creates/updates the `vX.Y.Z`
+   release from the matching `CHANGELOG.md` section. Upload the rootfs
+   archive and its checksum to the same release with `gh release upload`.
 4. Version line stays `0.1.x`; bump `pubspec.yaml` and `app_info.dart`
    together and keep `+N` increasing above 5036.
